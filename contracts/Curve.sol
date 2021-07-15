@@ -347,32 +347,31 @@ contract Curve is Ownable, I_Curve {
     // Curve mathematical functions
 
     uint256 internal constant _BZZ_SCALE = 1e16;
-    uint256 internal constant _N = 5;
+    uint256 internal constant _N1 = 6;
+    uint256 internal constant _N2 = 3;
     uint256 internal constant _MARKET_OPENING_SUPPLY = 62500000 * _BZZ_SCALE;
+    uint256 internal constant _C =  64165000 * _BZZ_SCALE;
+    uint256 internal constant _K = 100;
     // Equation for curve: 
 
     /**
      * @param   x The supply to calculate at.
-     * @return  x^32/_MARKET_OPENING_SUPPLY^5
-     * @dev     Calculates the 32 power of `x` (`x` squared 5 times) times a 
-     *          constant. Each time it squares the function it divides by the 
-     *          `_MARKET_OPENING_SUPPLY` so when `x` = `_MARKET_OPENING_SUPPLY` 
-     *          it doesn't change `x`. 
+     * @return  x^72/_C^71
+     * @dev     x^72/_C^71 = ((x=x*x/_C) 6 times) * ((x=x*x/_C) 3 times)/_C
+     *          Assume x*x/x = x, result not chaning when _C = x.
      *
-     *          `c*x^32` | `c` is chosen in such a way that 
-     *          `_MARKET_OPENING_SUPPLY` is the fixed point of the helper 
-     *          function.
-     *
-     *          The division by `_MARKET_OPENING_SUPPLY` also helps avoid an 
-     *          overflow.
-     *
-     *          The `_helper` function is separate to the `_primitiveFunction` 
-     *          as we modify `x`. 
+     *          Div after every mul help reduce overflow
      */
     function _helper(uint256 x) internal view returns (uint256) {
-        for (uint256 index = 1; index <= _N; index++) {
-            x = (x.mul(x)).div(_MARKET_OPENING_SUPPLY);
+        uint256 x2 = x;
+        for (uint256 index = 1; index <= _N1; index++) {
+            x = (x.mul(x)).div(_C);
         }
+        for (uint256 index = 1; index <= _N2; index++) {
+            x2 = (x2.mul(x2)).div(_C);
+        }
+        x2 = x2.div(_C);
+        x = x.mul(x2);
         return x;
     }
 
@@ -382,15 +381,16 @@ contract Curve is Ownable, I_Curve {
      * @dev     `s` is being added because it is the linear term in the 
      *          polynomial (this ensures no free BUZZ tokens).
      *
-     *          primitive function equation: s + c*s^32.
+     *          primitive function equation: s/k + c*s^72.
      * 
+     *          1/k = 10^2
      *          See the helper function for the definition of `c`.
      *
      *          Converts from something measured in BZZ (1e16) to dai atomic 
      *          units 1e18.
      */
     function _primitiveFunction(uint256 s) internal view returns (uint256) {
-        return s.add(_helper(s));
+        return s.div(_K).add(_helper(s));
     }
 
     /**
